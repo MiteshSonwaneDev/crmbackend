@@ -3,33 +3,52 @@ package com.example.crm_system.service;
 import com.example.crm_system.dto.BillDetailsResponseDTO;
 import com.example.crm_system.dto.BillItemDTO;
 import com.example.crm_system.dto.BillPaymentResponseDTO;
+import com.example.crm_system.dto.BillWithPaymentDTO;
 import com.example.crm_system.dto.CustomerPaymentSummary;
 import com.example.crm_system.entity.BillEntity;
 import com.example.crm_system.entity.BillPayment;
+import com.example.crm_system.entity.BillSettlement;
 import com.example.crm_system.entity.CustomerEntity;
 import com.example.crm_system.repository.BillPaymentRepository;
 import com.example.crm_system.repository.BillRepository;
+import com.example.crm_system.repository.BillSettlementRepository;
 import com.example.crm_system.repository.CustomerRepository;
+import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.transaction.Transactional;
+
 import com.example.crm_system.entity.BillItem;
 
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class BillPaymentService {
+        private final BillSettlementRepository billSettlementRepository;
+    private static final String BASE_DIR = "uploads/invoices";
 
     private final BillRepository billRepository;
     private final BillPaymentRepository billPaymentRepository;
     private final CustomerRepository customerRepository;
 
+
     // ✅ Include all repositories in constructor
     public BillPaymentService(BillRepository billRepository,
                               BillPaymentRepository billPaymentRepository,
-                              CustomerRepository customerRepository) {
+                              BillSettlementRepository billSettlementRepository,
+                              CustomerRepository customerRepository
+                            ) {
         this.billRepository = billRepository;
         this.billPaymentRepository = billPaymentRepository;
+        this.billSettlementRepository = billSettlementRepository;
         this.customerRepository = customerRepository;
     }
   public BillPayment updatePayment(Long paymentId, BillPayment updatedPayment) {
@@ -136,75 +155,95 @@ public class BillPaymentService {
     }
 
     // ✅ Fetch all payments by customer phone
-    public CustomerPaymentSummary getPaymentsByCustomerPhone(Long businessId, String phoneNumber) {
-        List<BillEntity> bills = billRepository.findByBusinessIdAndPhoneNumber(businessId, phoneNumber);
+  public CustomerPaymentSummary getPaymentsByCustomerPhone(Long businessId, String phoneNumber) {
+    List<BillEntity> bills = billRepository.findByBusinessIdAndPhoneNumber(businessId, phoneNumber);
 
-        if (bills.isEmpty()) {
-            throw new RuntimeException("No bills found for this customer in this business");
-        }
-
-        // ✅ Always get customer from customer table
-        CustomerEntity customer = customerRepository
-                .findByBusinessIdAndCustomerMobileNumber(businessId, phoneNumber)
-                .orElseThrow(() -> new RuntimeException("Customer not found in this business"));
-
-        int totalTransactions = bills.size();
-        double totalBusiness = bills.stream().mapToDouble(BillEntity::getNetPayable).sum();
-
-        List<String> services = bills.stream()
-                .flatMap(b -> b.getItems().stream()
-                        .filter(i -> "SERVICE".equalsIgnoreCase(i.getItemType()))
-                        .map(i -> i.getName()))
-                .distinct()
-                .collect(Collectors.toList());
-
-        List<String> products = bills.stream()
-                .flatMap(b -> b.getItems().stream()
-                        .filter(i -> "PRODUCT".equalsIgnoreCase(i.getItemType()))
-                        .map(i -> i.getName()))
-                .distinct()
-                .collect(Collectors.toList());
-
-       List<CustomerPaymentSummary.PaymentDetail> payments = bills.stream()
-    .filter(b -> b.getPayment() != null)
-    .map(b -> {
-        BillPayment p = b.getPayment();
-
-        CustomerPaymentSummary.PaymentDetail dto = new CustomerPaymentSummary.PaymentDetail();
-        dto.setBillId(b.getId());
-        dto.setBillDate(b.getBillDate());
-        dto.setTotalPaid(p.getTotalPaid());
-        dto.setAmountToBeCollected(p.getAmountToBeCollected());
-        dto.setCashAmount(p.getCashAmount());
-        dto.setCardAmount(p.getCardAmount());
-        dto.setOtherAmount(p.getOtherAmount());
-        dto.setUserBalanceAmount(p.getUserBalanceAmount());
-
-        // 🔥 ADD THIS → SERVICES FOR THIS SPECIFIC BILL
-        List<String> servicesForBill = b.getItems().stream()
-                .filter(i -> "SERVICE".equalsIgnoreCase(i.getItemType()))
-                .map(BillItem::getName)
-                .collect(Collectors.toList());
-
-        dto.setServices(servicesForBill);
-
-        return dto;
-    })
-    .collect(Collectors.toList());
-
-
-        // ✅ Use authoritative customer record
-        CustomerPaymentSummary summary = new CustomerPaymentSummary();
-        summary.setCustomerName(customer.getCustomerName());
-        summary.setPhoneNumber(phoneNumber);
-        summary.setTotalTransactions(totalTransactions);
-        summary.setTotalBusiness(totalBusiness);
-        summary.setServices(services);
-        summary.setProducts(products);
-        summary.setPayments(payments);
-
-        return summary;
+    if (bills.isEmpty()) {
+        throw new RuntimeException("No bills found for this customer in this business");
     }
+
+    CustomerEntity customer = customerRepository
+            .findByBusinessIdAndCustomerMobileNumber(businessId, phoneNumber)
+            .orElseThrow(() -> new RuntimeException("Customer not found in this business"));
+
+    int totalTransactions = bills.size();
+    double totalBusiness = bills.stream().mapToDouble(BillEntity::getNetPayable).sum();
+
+    // Get unique service and product names for summary
+    List<String> services = bills.stream()
+            .flatMap(b -> b.getItems().stream()
+                    .filter(i -> "SERVICE".equalsIgnoreCase(i.getItemType()))
+                    .map(BillItem::getName))
+            .distinct()
+            .collect(Collectors.toList());
+
+    List<String> products = bills.stream()
+            .flatMap(b -> b.getItems().stream()
+                    .filter(i -> "PRODUCT".equalsIgnoreCase(i.getItemType()))
+                    .map(BillItem::getName))
+            .distinct()
+            .collect(Collectors.toList());
+
+    // Build payment details with item quantities
+    List<CustomerPaymentSummary.PaymentDetail> payments = bills.stream()
+        .filter(b -> b.getPayment() != null)
+        .map(b -> {
+            BillPayment p = b.getPayment();
+
+            CustomerPaymentSummary.PaymentDetail dto = new CustomerPaymentSummary.PaymentDetail();
+            dto.setBillId(b.getId());
+            dto.setBillDate(b.getBillDate());
+            dto.setTotalPaid(p.getTotalPaid());
+            dto.setAmountToBeCollected(p.getAmountToBeCollected());
+            dto.setCashAmount(p.getCashAmount());
+            dto.setCardAmount(p.getCardAmount());
+            dto.setOtherAmount(p.getOtherAmount());
+            dto.setUserBalanceAmount(p.getUserBalanceAmount());
+
+            // ✅ Map services with quantities
+            List<CustomerPaymentSummary.ItemDetail> servicesForBill = b.getItems().stream()
+                    .filter(i -> "SERVICE".equalsIgnoreCase(i.getItemType()))
+                    .map(item -> {
+                        CustomerPaymentSummary.ItemDetail detail = new CustomerPaymentSummary.ItemDetail();
+                        detail.setName(item.getName());
+                        detail.setQuantity(item.getQuantity());
+                        detail.setPrice(item.getPrice());
+            detail.setTotal(item.getPrice() * item.getQuantity());
+                        return detail;
+                    })
+                    .collect(Collectors.toList());
+
+            // ✅ Map products with quantities
+            List<CustomerPaymentSummary.ItemDetail> productsForBill = b.getItems().stream()
+                    .filter(i -> "PRODUCT".equalsIgnoreCase(i.getItemType()))
+                    .map(item -> {
+                        CustomerPaymentSummary.ItemDetail detail = new CustomerPaymentSummary.ItemDetail();
+                        detail.setName(item.getName());
+                        detail.setQuantity(item.getQuantity());
+                        detail.setPrice(item.getPrice());
+            detail.setTotal(item.getPrice() * item.getQuantity());
+                        return detail;
+                    })
+                    .collect(Collectors.toList());
+
+            dto.setServices(servicesForBill);
+            dto.setProducts(productsForBill);
+
+            return dto;
+        })
+        .collect(Collectors.toList());
+
+    CustomerPaymentSummary summary = new CustomerPaymentSummary();
+    summary.setCustomerName(customer.getCustomerName());
+    summary.setPhoneNumber(phoneNumber);
+    summary.setTotalTransactions(totalTransactions);
+    summary.setTotalBusiness(totalBusiness);
+    summary.setServices(services);
+    summary.setProducts(products);
+    summary.setPayments(payments);
+
+    return summary;
+}
     public BillDetailsResponseDTO getBillDetails(Long businessId, Long billId) {
     BillEntity bill = billRepository.findByIdAndBusinessId(billId, businessId)
             .orElseThrow(() -> new RuntimeException("Bill not found"));
@@ -255,5 +294,200 @@ public class BillPaymentService {
 
     return dto;
 }
+
+
+@Transactional
+public void settleBill(Long businessId, Long billId) {
+
+    // 1️⃣ Fetch bill
+    BillEntity bill = billRepository
+            .findByIdAndBusinessId(billId, businessId)
+            .orElseThrow(() -> new RuntimeException("Bill not found"));
+
+    // 2️⃣ Fetch payment
+    BillPayment payment = billPaymentRepository
+            .findByBillId(billId)
+            .orElseThrow(() -> new RuntimeException("Payment not found"));
+
+    ObjectMapper mapper = new ObjectMapper();
+
+    // 3️⃣ Convert bill items → BillItemDTO list → JSON
+    String itemsJson;
+    try {
+        List<BillItemDTO> itemDTOs =
+                bill.getItems().stream()
+                    .map(item -> {
+                        BillItemDTO dto = new BillItemDTO();
+                        dto.setName(item.getName());
+                        dto.setType(item.getItemType()); // enum → String
+                        dto.setQuantity(item.getQuantity());
+                        dto.setRate(item.getPrice());
+                        dto.setDescription(item.getDescription());
+                        dto.setDuration(item.getDuration());
+                        return dto;
+                    })
+                    .collect(Collectors.toList());
+
+        itemsJson = mapper.writeValueAsString(itemDTOs);
+
+    } catch (Exception e) {
+        throw new RuntimeException("Failed to serialize bill items", e);
+    }
+
+    // 4️⃣ Build settlement entity
+    BillSettlement settlement = new BillSettlement();
+    settlement.setBusinessId(businessId);
+    settlement.setBillId(billId);
+    settlement.setBillNumber(bill.getBillNumber());
+    settlement.setBillDate(bill.getBillDate());
+
+    settlement.setCustomerName(bill.getCustomerName());
+    settlement.setPhoneNumber(bill.getPhoneNumber());
+    settlement.setCustomerGender(bill.getCustomerGender());
+
+    settlement.setServiceTotal(bill.getServiceTotal());
+    settlement.setProductTotal(bill.getProductTotal());
+    settlement.setDiscount(bill.getDiscount());
+    settlement.setGst(bill.getGst());
+    settlement.setNetPayable(bill.getNetPayable());
+
+    settlement.setCashAmount(payment.getCashAmount());
+    settlement.setCardAmount(payment.getCardAmount());
+    settlement.setOtherAmount(payment.getOtherAmount());
+    settlement.setTotalPaid(payment.getTotalPaid());
+    settlement.setAmountToBeCollected(payment.getAmountToBeCollected());
+
+    // ⚠️ Only keep this if field exists in BillSettlement
+    settlement.setUserBalanceAmount(payment.getUserBalanceAmount());
+
+    settlement.setItemsJson(itemsJson);
+    settlement.setPaymentDate(payment.getPaymentDate());
+
+    // 5️⃣ Save settlement
+    billSettlementRepository.save(settlement);
+}
+
+public boolean saveInvoiceImage(
+            Long businessId,
+            Long billId,
+            String base64Image
+    ) {
+        try {
+            // Remove base64 prefix if present
+            if (base64Image.contains(",")) {
+                base64Image = base64Image.split(",")[1];
+            }
+
+            byte[] imageBytes = Base64.getDecoder().decode(base64Image);
+
+            // 📂 uploads/invoices/{businessId}/{billId}
+            Path dirPath = Paths.get(
+                    BASE_DIR,
+                    businessId.toString(),
+                    billId.toString()
+            );
+
+            if (!Files.exists(dirPath)) {
+                Files.createDirectories(dirPath);
+            }
+
+            Path imagePath = dirPath.resolve("invoice.png");
+            Files.write(imagePath, imageBytes);
+
+            return true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    public byte[] getInvoiceImage(Long businessId, Long billId) {
+    try {
+        Path imagePath = Paths.get(
+                BASE_DIR,
+                businessId.toString(),
+                billId.toString(),
+                "invoice.png"
+        );
+
+        if (!Files.exists(imagePath)) {
+            return null;
+        }
+
+        return Files.readAllBytes(imagePath);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+    }
+}
+ public List<BillWithPaymentDTO> getOtherAmountBillsByBusiness(Long businessId) {
+
+        return billPaymentRepository
+                .findBillsWithOtherAmountByBusiness(businessId)
+                .stream()
+                .map(this::mapToDTO)
+                .toList();
+    }
+
+    private BillWithPaymentDTO mapToDTO(BillEntity bill) {
+
+        BillWithPaymentDTO dto = new BillWithPaymentDTO();
+
+        dto.setId(bill.getId());
+        dto.setBillNumber(bill.getBillNumber());
+        dto.setBillDate(bill.getBillDate());
+        dto.setServiceTotal(bill.getServiceTotal());
+        dto.setProductTotal(bill.getProductTotal());
+        dto.setDiscount(bill.getDiscount());
+        dto.setGst(bill.getGst());
+        dto.setNetPayable(bill.getNetPayable());
+
+        dto.setCustomerName(bill.getCustomerName());
+        dto.setPhoneNumber(bill.getPhoneNumber());
+        dto.setCustomerGender(bill.getCustomerGender());
+        dto.setStaffName(bill.getStaffName());
+
+        // ✅ Items (using your BillItemDTO)
+        dto.setItems(
+            bill.getItems().stream().map(item -> {
+                BillItemDTO itemDTO = new BillItemDTO();
+                itemDTO.setName(item.getName());
+                itemDTO.setType(item.getItemType());
+                itemDTO.setQuantity(item.getQuantity());
+                itemDTO.setRate(item.getPrice());
+                itemDTO.setDescription(item.getDescription());
+                itemDTO.setDuration(item.getDuration());
+                return itemDTO;
+            }).toList()
+        );
+
+        // ✅ Payment (using your BillPaymentResponseDTO)
+        if (bill.getPayment() != null) {
+            BillPaymentResponseDTO paymentDTO = new BillPaymentResponseDTO();
+
+            paymentDTO.setPaymentId(bill.getPayment().getId());
+            paymentDTO.setBillId(bill.getId());
+            paymentDTO.setBusinessId(bill.getBusiness().getId());
+
+            paymentDTO.setCustomerName(bill.getCustomerName());
+            paymentDTO.setPhoneNumber(bill.getPhoneNumber());
+            paymentDTO.setCustomerGender(bill.getCustomerGender());
+            paymentDTO.setBillDate(bill.getBillDate());
+
+            paymentDTO.setCashAmount(bill.getPayment().getCashAmount());
+            paymentDTO.setCardAmount(bill.getPayment().getCardAmount());
+            paymentDTO.setOtherAmount(bill.getPayment().getOtherAmount());
+            paymentDTO.setUserBalanceAmount(bill.getPayment().getUserBalanceAmount());
+            paymentDTO.setCollectionNotes(bill.getPayment().getCollectionNotes());
+            paymentDTO.setCustomerNotes(bill.getPayment().getCustomerNotes());
+            paymentDTO.setTotalPaid(bill.getPayment().getTotalPaid());
+            paymentDTO.setAmountToBeCollected(bill.getPayment().getAmountToBeCollected());
+
+            dto.setPayment(paymentDTO);
+        }
+
+        return dto;
+    }
 
 }

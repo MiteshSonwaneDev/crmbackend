@@ -9,22 +9,26 @@ import com.example.crm_system.repository.BillRepository;
 import com.example.crm_system.repository.BusinessRepository;
 import com.example.crm_system.repository.ScheduleRepository;
 import org.springframework.stereotype.Service;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
+    private final WhatsAppService whatsAppService;
     private final BusinessRepository businessRepository;
     private final BillRepository billRepository;
 
     public ScheduleService(ScheduleRepository scheduleRepository, 
                            BusinessRepository businessRepository,
-                           BillRepository billRepository) {
+                           BillRepository billRepository,
+                                WhatsAppService whatsAppService
+) {
         this.scheduleRepository = scheduleRepository;
         this.businessRepository = businessRepository;
         this.billRepository = billRepository;
+        this.whatsAppService=whatsAppService;
     }
 public ScheduleEntity saveForLater(ScheduleRequest req) {
     var business = businessRepository.findById(req.getBusinessId())
@@ -39,7 +43,8 @@ public ScheduleEntity saveForLater(ScheduleRequest req) {
     schedule.setCustomerGender(req.getCustomerGender());
 
     // ✅ Map services
-    List<ScheduleServiceEntity> serviceEntities = req.getServices().stream()
+    List<ScheduleServiceEntity> serviceEntities = new ArrayList<>(
+        req.getServices().stream()
             .map(dto -> {
                 ScheduleServiceEntity s = new ScheduleServiceEntity();
                 s.setName(dto.getName());
@@ -48,10 +53,13 @@ public ScheduleEntity saveForLater(ScheduleRequest req) {
                 s.setDuration(dto.getDuration());
                 s.setSchedule(schedule);
                 return s;
-            }).toList();
+            })
+            .toList()
+);
 
     // ✅ Map products
-    List<ScheduleProductEntity> productEntities = req.getProducts().stream()
+    List<ScheduleProductEntity> productEntities = new ArrayList<>(
+        req.getProducts().stream()
             .map(dto -> {
                 ScheduleProductEntity p = new ScheduleProductEntity();
                 p.setName(dto.getName());
@@ -59,15 +67,47 @@ public ScheduleEntity saveForLater(ScheduleRequest req) {
                 p.setQuantity(dto.getQuantity());
                 p.setSchedule(schedule);
                 return p;
-            }).toList();
+            })
+            .toList()
+);
+
 
     schedule.setServices(serviceEntities);
     schedule.setProducts(productEntities);
     schedule.setStatus("PENDING");
     schedule.setAppointmentDateTime(req.getAppointmentDateTime());
+ ScheduleEntity savedSchedule = scheduleRepository.save(schedule);
+
+    // 🔔 SEND WHATSAPP (NON-BLOCKING)
+    try {
+        // Customer confirmation
+
+        whatsAppService.sendAppointmentConfirmation(
+                savedSchedule.getPhoneNumber(),
+                savedSchedule.getCustomerName(),
+                 business.getBusinessName(),
+                 business.getReceptionNumber(),
+
+                savedSchedule.getAppointmentDateTime().toString(),
+                savedSchedule.getStaffName()
+        );
+
+        // Doctor notification
+        whatsAppService.sendDoctorAppointmentAlert(
+                         business.getBusinessName(),
+
+                savedSchedule.getCustomerName(),
+                savedSchedule.getPhoneNumber(),
+                savedSchedule.getAppointmentDateTime().toString(),
+                savedSchedule.getStaffName()
+        );
+
+    } catch (Exception e) {
+        System.out.println("⚠️ WhatsApp appointment message failed: " + e.getMessage());
+    }
 
 
-    return scheduleRepository.save(schedule);
+return savedSchedule;
 }
 
 

@@ -1,5 +1,6 @@
 package com.example.crm_system.service;
 
+import com.example.crm_system.dto.CustomerListDTO;
 import com.example.crm_system.entity.Business;
 import com.example.crm_system.entity.CustomerEntity;
 import com.example.crm_system.repository.BusinessRepository;
@@ -29,7 +30,7 @@ public class CustomerService {
     }
 
     // Get all customers for a business
-    public List<CustomerEntity> getCustomerByBusiness(Long businessId) {
+    public List<CustomerListDTO> getCustomerByBusiness(Long businessId) {
         return customerRepository.findByBusiness_Id(businessId);
     }
 

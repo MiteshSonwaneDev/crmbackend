@@ -29,8 +29,7 @@ public class BillEntity {
     private double productTotal;
 
     @Column(nullable = true)
-    private double discount;   // % or flat value from UI
-
+    private double discount;   
     @Column(nullable = true)
     private double gst;        // GST percentage
 

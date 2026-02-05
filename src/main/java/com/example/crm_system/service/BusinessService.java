@@ -30,6 +30,13 @@ public class BusinessService {
             return true;
         }).orElse(false);
     }
+public Optional<Business> getByEmail(String email) {
+    return businessRepository.findByEmail(email);
+}
+
+public Optional<Business> getByMobile(String mobile) {
+    return businessRepository.findByOwnerMobile(mobile);
+}
 
     // ===================== UPDATE SIGNATURE =====================
     public boolean updateSignature(Long id, String base64Image) {
@@ -51,14 +58,29 @@ public class BusinessService {
     }
 
     // ===================== LOGIN =====================
-    public Optional<Business> login(String identifier, String password) {
+   public Optional<String> loginWithMessage(String identifier, String password) {
 
-        if (identifier.contains("@")) {
-            return businessRepository.findByEmailAndPassword(identifier, password);
-        } else {
-            return businessRepository.findByOwnerMobileAndPassword(identifier, password);
-        }
+    Optional<Business> businessOpt;
+
+    if (identifier.contains("@")) {
+        businessOpt = businessRepository.findByEmail(identifier);
+    } else {
+        businessOpt = businessRepository.findByOwnerMobile(identifier);
     }
+
+    if (businessOpt.isEmpty()) {
+        return Optional.of("INVALID_IDENTIFIER");
+    }
+
+    Business business = businessOpt.get();
+
+    if (!business.getPassword().equals(password)) {
+        return Optional.of("INVALID_PASSWORD");
+    }
+
+    return Optional.of("SUCCESS");
+}
+
 
     // ===================== UPDATE PASSWORD =====================
     public String updatePassword(String identifier, String currentPassword, String newPassword) {

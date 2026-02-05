@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/business")
@@ -27,12 +28,32 @@ public class BusinessController {
         return ResponseEntity.ok(businessService.saveBusiness(business));
     }
 
-    // ================== LOGIN ==================
+    // ================== LOGIN (IMPROVED) ==================
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        return businessService.login(request.getIdentifier(), request.getPassword())
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(401).body("Invalid credentials"));
+
+        Optional<Business> businessOpt;
+
+        if (request.getIdentifier().contains("@")) {
+            businessOpt = businessService.getByEmail(request.getIdentifier());
+        } else {
+            businessOpt = businessService.getByMobile(request.getIdentifier());
+        }
+
+        // ❌ Email / Mobile not found
+        if (businessOpt.isEmpty()) {
+            return ResponseEntity.status(404).body("Email or mobile not registered");
+        }
+
+        Business business = businessOpt.get();
+
+        // ❌ Password incorrect
+        if (!business.getPassword().equals(request.getPassword())) {
+            return ResponseEntity.status(401).body("Incorrect password");
+        }
+
+        // ✅ Success
+        return ResponseEntity.ok(business);
     }
 
     // ================== UPLOAD LOGO ==================
@@ -127,18 +148,18 @@ public class BusinessController {
         }
     }
 
+    // ================== UPDATE PROFILE ==================
     @PutMapping("/{id}/update-profile")
-public ResponseEntity<?> updateProfile(
-        @PathVariable Long id,
-        @RequestBody UpdateBusinessProfileRequest request) {
+    public ResponseEntity<?> updateProfile(
+            @PathVariable Long id,
+            @RequestBody UpdateBusinessProfileRequest request) {
 
-    Business updated = businessService.updateProfile(id, request);
+        Business updated = businessService.updateProfile(id, request);
 
-    if (updated == null) {
-        return ResponseEntity.badRequest().body("Business not found");
+        if (updated == null) {
+            return ResponseEntity.badRequest().body("Business not found");
+        }
+
+        return ResponseEntity.ok(updated);
     }
-
-    return ResponseEntity.ok(updated);
-}
-
 }

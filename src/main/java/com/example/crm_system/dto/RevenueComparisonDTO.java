@@ -8,6 +8,6 @@ import lombok.Data;
 public class RevenueComparisonDTO {
     private String month;     
     private double revenue;     
-    private double avg3Months;  // last 3 months revenue
+    private double avg3Months; 
     
 }

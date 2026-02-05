@@ -1,5 +1,6 @@
 package com.example.crm_system.controller;
 
+import com.example.crm_system.dto.BillDetailsResponseDTO;
 import com.example.crm_system.dto.BillRequest;
 import com.example.crm_system.dto.CustomerTransactionSummary;
 import com.example.crm_system.entity.BillEntity;
@@ -30,6 +31,12 @@ public class BillController {
     public List<BillEntity> getBillsByBusiness(@PathVariable Long businessId) {
         return billService.getBillsByBusiness(businessId);
     }
+ @GetMapping("/business/{businessId}/rep")
+public List<BillDetailsResponseDTO> getBillsByBusinessrep(
+        @PathVariable Long businessId) {
+    return billService.getBillsByBusinessrep(businessId);
+}
+
 
     // ✅ Get bills by customer phone number
     @GetMapping("/customer/{phoneNumber}")

@@ -27,7 +27,7 @@ public class CustomerEntity {
 
     private String customerEmail;
 
-    @Column(nullable = false, unique = true)  // ✅ Make mobile number unique
+    @Column(nullable = false, unique = true)  
     private String customerMobileNumber;
 
     private String customerGender;

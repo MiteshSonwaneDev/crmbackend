@@ -10,8 +10,8 @@ public class CustomerPaymentSummary {
     private String phoneNumber;
     private int totalTransactions;
     private double totalBusiness;
-    private List<String> services;
-    private List<String> products;
+    private List<String> services;      // Keep for summary (unique service names)
+    private List<String> products;      // Keep for summary (unique product names)
     private List<PaymentDetail> payments;
 
     @Data
@@ -23,7 +23,19 @@ public class CustomerPaymentSummary {
         private double cashAmount;
         private double cardAmount;
         private double otherAmount;
-        private List<String> services;
         private double userBalanceAmount;
+        
+        // ✅ Changed from List<String> to List<ItemDetail>
+        private List<ItemDetail> services;
+        private List<ItemDetail> products;
+    }
+    
+    // ✅ New inner class for item details with quantity
+    @Data
+    public static class ItemDetail {
+        private String name;
+        private Integer quantity;
+        private Double price;
+        private Double total;
     }
 }

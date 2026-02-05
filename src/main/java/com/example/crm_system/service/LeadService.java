@@ -21,6 +21,8 @@ public class LeadService {
     private final LeadRepository leadRepository;
     private final CustomerRepository customerRepository;
     private final BusinessRepository businessRepository;
+        private final WhatsAppService whatsAppService; // ✅ ADD THIS
+
 
     private LocalDateTime nowIST() {
         return ZonedDateTime.now(ZoneId.of("Asia/Kolkata")).toLocalDateTime();
@@ -48,6 +50,25 @@ public class LeadService {
                 .build();
 
         Lead savedLead = leadRepository.save(lead);
+     try {
+
+    // ✅ Send message to customer
+    whatsAppService.sendCustomerWelcome(savedLead.getPhone(),business.getBusinessName(),savedLead.getName(),business.getReceptionNumber());
+
+    // ✅ Send message to doctor
+
+    whatsAppService.sendDoctorNotification(
+             business.getBusinessName(),
+
+            savedLead.getName(),
+            savedLead.getPhone(),
+            savedLead.getQuery(),
+            savedLead.getSource()
+    );
+
+} catch (Exception e) {
+    System.out.println("WhatsApp sending failed: " + e.getMessage());
+}
 
         // Ensure customer exists for this business
         customerRepository.findByBusiness_IdAndCustomerNameAndCustomerMobileNumber(

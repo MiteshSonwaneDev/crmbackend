@@ -1,5 +1,8 @@
 package com.example.crm_system.service;
 
+import com.example.crm_system.dto.BillDetailsResponseDTO;
+import com.example.crm_system.dto.BillItemDTO;
+import com.example.crm_system.dto.BillPaymentResponseDTO;
 import com.example.crm_system.dto.BillRequest;
 import com.example.crm_system.dto.CustomerTransactionSummary;
 import com.example.crm_system.dto.ItemRequest;
@@ -30,6 +33,78 @@ public class BillService {
 public List<BillEntity> getBillsByBusiness(Long businessId) {
     return billRepository.findByBusinessId(businessId);
 }
+public List<BillDetailsResponseDTO> getBillsByBusinessrep(Long businessId) {
+
+    List<BillEntity> bills = billRepository.findByBusinessId(businessId);
+
+    return bills.stream().map(this::mapToBillDetailsDTO).toList();
+}
+private BillDetailsResponseDTO mapToBillDetailsDTO(BillEntity bill) {
+
+    BillDetailsResponseDTO dto = new BillDetailsResponseDTO();
+
+    dto.setBillId(bill.getId());
+    dto.setBillNumber(bill.getBillNumber());
+    dto.setBillDate(bill.getBillDate());
+
+    dto.setCustomerName(bill.getCustomerName());
+    dto.setPhoneNumber(bill.getPhoneNumber());
+    dto.setCustomerGender(bill.getCustomerGender());
+
+    dto.setServiceTotal(bill.getServiceTotal());
+    dto.setProductTotal(bill.getProductTotal());
+    dto.setDiscount(bill.getDiscount());
+    dto.setGst(bill.getGst());
+    dto.setNetPayable(bill.getNetPayable());
+
+    // ✅ Items
+    dto.setItems(
+        bill.getItems().stream().map(item -> {
+            BillItemDTO itemDTO = new BillItemDTO();
+            itemDTO.setName(item.getName());
+            itemDTO.setType(item.getItemType());
+            itemDTO.setQuantity(item.getQuantity());
+            itemDTO.setRate(item.getPrice());
+            itemDTO.setDescription(item.getDescription());
+            itemDTO.setDuration(item.getDuration());
+            return itemDTO;
+        }).toList()
+    );
+
+    // ✅ Payment (optional)
+    if (bill.getPayment() != null) {
+        dto.setPayment(mapToPaymentDTO(bill));
+    }
+
+    return dto;
+}
+private BillPaymentResponseDTO mapToPaymentDTO(BillEntity bill) {
+
+    BillPayment payment = bill.getPayment();
+
+    BillPaymentResponseDTO dto = new BillPaymentResponseDTO();
+
+    dto.setPaymentId(payment.getId());
+    dto.setBillId(bill.getId());
+    dto.setBusinessId(bill.getBusiness().getId()); // ID only (lightweight)
+
+    dto.setCustomerName(bill.getCustomerName());
+    dto.setPhoneNumber(bill.getPhoneNumber());
+    dto.setCustomerGender(bill.getCustomerGender());
+    dto.setBillDate(bill.getBillDate());
+
+    dto.setCashAmount(payment.getCashAmount());
+    dto.setCardAmount(payment.getCardAmount());
+    dto.setOtherAmount(payment.getOtherAmount());
+    dto.setUserBalanceAmount(payment.getUserBalanceAmount());
+    dto.setCollectionNotes(payment.getCollectionNotes());
+    dto.setCustomerNotes(payment.getCustomerNotes());
+    dto.setTotalPaid(payment.getTotalPaid());
+    dto.setAmountToBeCollected(payment.getAmountToBeCollected());
+
+    return dto;
+}
+
 
 public List<BillEntity> getBillsByCustomerPhone(String phoneNumber) {
     return billRepository.findByPhoneNumber(phoneNumber);

@@ -1,5 +1,6 @@
 package com.example.crm_system.controller;
 
+import com.example.crm_system.dto.CustomerListDTO;
 import com.example.crm_system.entity.CustomerEntity;
 import com.example.crm_system.service.CustomerService;
 import org.springframework.http.ResponseEntity;
@@ -25,10 +26,11 @@ public class CustomerController {
     }
 
     // Get all customers for a business
-    @GetMapping("/business/{businessId}")
-    public ResponseEntity<List<CustomerEntity>> getCustomerByBusiness(@PathVariable Long businessId) {
-        return ResponseEntity.ok(customerService.getCustomerByBusiness(businessId));
-    }
+   @GetMapping("/business/{businessId}")
+public ResponseEntity<List<CustomerListDTO>> getCustomerByBusiness(@PathVariable Long businessId) {
+    return ResponseEntity.ok(customerService.getCustomerByBusiness(businessId));
+}
+
 
 
     
