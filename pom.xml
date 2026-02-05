@@ -15,11 +15,7 @@
     <groupId>com.example</groupId>
     <artifactId>crm_system</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <groupId>com.example</groupId>
-<artifactId>crm_system</artifactId>
-<version>0.0.1-SNAPSHOT</version>
-<packaging>jar</packaging>
-<name>crm_system</name>
+    <packaging>jar</packaging>
     <name>crm_system</name>
     <description>CRM System Backend (Secured with JWT)</description>
 
