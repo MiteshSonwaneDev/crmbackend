@@ -4,13 +4,16 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
 
 import com.example.crm_system.dto.BillDetailsResponseDTO;
 import com.example.crm_system.entity.WhatsAppConfig;
@@ -24,10 +27,18 @@ public class WhatsAppService {
     private static final String API_KEY = "cbmurKsSuaqEL5MOAvNvUPIMtwxw2qhI";
     private static final String SENDER = "917489660550";
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     
     @Autowired
     private WhatsAppConfigRepository whatsAppConfigRepository;
+
+    // ✅ Configure RestTemplate with timeouts
+    public WhatsAppService() {
+        this.restTemplate = new RestTemplateBuilder()
+            .setConnectTimeout(Duration.ofSeconds(30))  // 30 seconds to connect
+            .setReadTimeout(Duration.ofSeconds(30))     // 30 seconds to read response
+            .build();
+    }
 
     /**
      * Get the configured doctor WhatsApp number from database
@@ -72,6 +83,8 @@ public class WhatsAppService {
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            // ✅ Add User-Agent header (some APIs require this)
+            headers.set("User-Agent", "CRMSystem/1.0");
 
             MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
             body.add("api_key", API_KEY);
@@ -85,15 +98,26 @@ public class WhatsAppService {
 
             log.info("📤 Sending WhatsApp message");
             log.info("➡️ To: {}", formattedPhone);
+            log.info("🔗 API URL: {}", API_URL);
 
             ResponseEntity<String> response =
                     restTemplate.postForEntity(API_URL, request, String.class);
 
-            log.info("✅ WhatsApp sent successfully to {}", formattedPhone);
-            log.debug("📥 Response: {}", response.getBody());
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("✅ WhatsApp sent successfully to {}", formattedPhone);
+                log.debug("📥 Response: {}", response.getBody());
+            } else {
+                log.warn("⚠️ WhatsApp API returned non-success status: {}", response.getStatusCode());
+                log.warn("📥 Response body: {}", response.getBody());
+            }
 
+        } catch (ResourceAccessException e) {
+            log.error("❌ Network error - Cannot reach WhatsApp API for {}", phone);
+            log.error("🔍 Error details: {}", e.getMessage());
+            log.error("💡 This might be a network/firewall issue on the hosting platform");
+            // Don't throw exception - just log and continue
         } catch (Exception e) {
-            log.error("❌ WhatsApp sending failed for {}", phone, e);
+            log.error("❌ WhatsApp sending failed for {}: {}", phone, e.getMessage(), e);
         }
     }
 
